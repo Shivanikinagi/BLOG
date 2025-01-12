@@ -1,6 +1,6 @@
 from datetime import date
 from flask import Flask, abort, render_template, redirect, url_for, flash, request
-from flask_bootstrap import Bootstrap5
+from flask_bootstrap import Bootstrap
 from flask_ckeditor import CKEditor, CKEditorField
 from flask_gravatar import Gravatar
 from flask_login import UserMixin, login_user, LoginManager, current_user, logout_user
@@ -13,21 +13,25 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from wtforms import StringField, SubmitField
 from wtforms.validators import DataRequired, URL
 from forms import CreatePostForm, RegisterForm, LoginForm, CommentForm
+from flask_migrate import Migrate
+
+
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '8BYkEfBA6O6donzWlSihBXox7C0sKR6b'
 ckeditor = CKEditor(app)
-Bootstrap5(app)
+Bootstrap(app)
+
+
 
 # Configure Flask-Login
 login_manager = LoginManager()
 login_manager.init_app(app)
-
+login_manager.login_view = "login"  # Ensure the login view is set for redirection
 
 @login_manager.user_loader
 def load_user(user_id):
-    return db.get_or_404(User, user_id)
-
+    return User.query.get(int(user_id))
 
 # For adding profile images to the comment section
 gravatar = Gravatar(app,
@@ -36,14 +40,12 @@ gravatar = Gravatar(app,
                     default='retro')
 
 
-# CREATE DATABASE
-class Base(DeclarativeBase):
-    pass
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///new_posts.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ECHO'] = True
 
 
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///posts.db'
-db = SQLAlchemy(model_class=Base)
-db.init_app(app)
+db = SQLAlchemy(app)
 
 
 class Contact(db.Model):
@@ -52,7 +54,6 @@ class Contact(db.Model):
     email = db.Column(db.String(150), nullable=False)
     phone = db.Column(db.String(50), nullable=False)
     message = db.Column(db.Text, nullable=False)
-
 
 # CONFIGURE TABLES
 class User(UserMixin, db.Model):
@@ -63,7 +64,6 @@ class User(UserMixin, db.Model):
     name: Mapped[str] = mapped_column(String(100))
     posts = relationship("BlogPost", back_populates="author")
     comments = relationship("Comment", back_populates="comment_author")
-
 
 class BlogPost(db.Model):
     __tablename__ = "blog_posts"
@@ -77,7 +77,6 @@ class BlogPost(db.Model):
     img_url: Mapped[str] = mapped_column(String(250), nullable=False)
     comments = relationship("Comment", back_populates="parent_post")
 
-
 class Comment(db.Model):
     __tablename__ = "comments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -87,10 +86,12 @@ class Comment(db.Model):
     parent_post = relationship("BlogPost", back_populates="comments")
     text: Mapped[str] = mapped_column(Text, nullable=False)
 
-
 with app.app_context():
-    db.create_all()
-
+    try:
+        db.create_all()
+        print("Database and tables created successfully.")
+    except Exception as e:
+        print(f"Error creating database: {e}")
 
 # Create an admin-only decorator
 def admin_only(f):
@@ -105,7 +106,6 @@ def admin_only(f):
         return f(*args, **kwargs)
 
     return decorated_function
-
 
 # Register new users into the User database
 @app.route('/register', methods=["GET", "POST"])
@@ -134,7 +134,6 @@ def register():
         return redirect(url_for("get_all_posts"))
     return render_template("register.html", form=form, current_user=current_user)
 
-
 @app.route('/login', methods=["GET", "POST"])
 def login():
     form = LoginForm()
@@ -154,7 +153,6 @@ def login():
 
     return render_template("login.html", form=form, current_user=current_user)
 
-
 @app.route('/logout')
 def logout():
     logout_user()
@@ -163,9 +161,19 @@ def logout():
 
 @app.route('/')
 def get_all_posts():
-    result = db.session.execute(db.select(BlogPost))
-    posts = result.scalars().all()
-    return render_template("index.html", all_posts=posts, current_user=current_user)
+    try:
+        result = db.session.execute(db.select(BlogPost))
+        posts = result.scalars().all()
+        # Check if the user is authenticated
+        if current_user.is_authenticated:
+            print(f"User {current_user.name} is logged in")
+        else:
+            print("No user logged in")
+
+        return render_template("index.html", all_posts=posts, current_user=current_user)
+    except Exception as e:
+        print(f"Error in get_all_posts: {e}")
+        return render_template("index.html", all_posts=[], current_user=current_user)
 
 
 @app.route("/post/<int:post_id>", methods=["GET", "POST"])
@@ -186,12 +194,11 @@ def show_post(post_id):
         db.session.commit()
     return render_template("post.html", post=requested_post, current_user=current_user, form=comment_form)
 
-
 @app.route("/new-post", methods=["GET", "POST"])
-@admin_only
 def add_new_post():
     form = CreatePostForm()
     if form.validate_on_submit():
+        # Create a new BlogPost object with user input
         new_post = BlogPost(
             title=form.title.data,
             subtitle=form.subtitle.data,
@@ -200,9 +207,15 @@ def add_new_post():
             author=current_user,
             date=date.today().strftime("%B %d, %Y")
         )
-        db.session.add(new_post)
-        db.session.commit()
-        return redirect(url_for("get_all_posts"))
+        # Add to database session and commit changes
+        try:
+            db.session.add(new_post)
+            db.session.commit()
+            return redirect(url_for("get_all_posts"))
+        except Exception as e:
+            flash("An error occurred while saving the post. Please try again.", "error")
+            print(f"Database error: {e}")
+    # Render the make-post.html template
     return render_template("make-post.html", form=form, current_user=current_user)
 
 
@@ -216,13 +229,23 @@ def edit_post(post_id):
         img_url=post.img_url,
         body=post.body
     )
+
     if edit_form.validate_on_submit():
+        # Update post attributes with form data
         post.title = edit_form.title.data
         post.subtitle = edit_form.subtitle.data
         post.img_url = edit_form.img_url.data
         post.body = edit_form.body.data
+
+        # Debugging: Print data before committing
+        print(f"Updated Data: {post.title}, {post.subtitle}, {post.img_url}, {post.body}")
+
         db.session.commit()
+
+        # Verify changes
+        print("Post updated successfully in the database.")
         return redirect(url_for("get_all_posts", post_id=post.id))
+
     return render_template("make-post.html", form=edit_form, is_edit=True, current_user=current_user)
 
 
@@ -234,11 +257,9 @@ def delete_post(post_id):
     db.session.commit()
     return redirect(url_for('get_all_posts'))
 
-
 @app.route("/about")
 def about():
     return render_template("about.html", current_user=current_user)
-
 
 @app.route('/contact', methods=['GET', 'POST'])
 def contact():
@@ -247,6 +268,10 @@ def contact():
         email = request.form['email']
         phone = request.form['phone']
         message = request.form['message']
+        # Save to database
+        new_contact = Contact(name=name, email=email, phone=phone, message=message)
+        db.session.add(new_contact)
+        db.session.commit()
         return render_template('contact.html', msg_sent=True)
     return render_template('contact.html', msg_sent=False)
 
@@ -255,10 +280,11 @@ def contact():
 class CreatePostForm(FlaskForm):
     title = StringField("Blog Post Title", validators=[DataRequired()])
     subtitle = StringField("Subtitle", validators=[DataRequired()])
-    author = StringField("Your Name", validators=[DataRequired()])
     img_url = StringField("Blog Image URL", validators=[DataRequired(), URL()])
     body = CKEditorField("Blog Content", validators=[DataRequired()])
     submit = SubmitField("Submit Post")
+
+migrate = Migrate(app, db)
 
 
 if __name__ == "__main__":

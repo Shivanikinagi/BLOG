@@ -1,11 +1,8 @@
-{% from "bootstrap5/form.html" import render_form %} {% block content %} {%
-include "header.html" %}
+{% block content %}
+{% include "header.html" %}
 
 <!-- Page Header -->
-<header
-  class="masthead"
-  style="background-image: url('../static/assets/img/register-bg.jpg')"
->
+<header class="masthead" style="background-image: url('../static/assets/img/register-bg.jpg')">
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
@@ -22,11 +19,67 @@ include "header.html" %}
   <div class="container">
     <div class="row">
       <div class="col-lg-8 col-md-10 mx-auto">
-      <!--Rendering the registration form here-->
-      {{render_form(form, novalidate=True, button_map={"submit": "primary"}) }}
+
+        <!-- Flash Message Section -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} mt-4">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <!-- Rendering the registration form manually -->
+        <form method="POST">
+          {{ form.hidden_tag() }}
+
+          <!-- Email Field -->
+          <div class="form-group">
+            <label for="email">Email</label>
+            {{ form.email(class="form-control", placeholder="Enter your email") }}
+            {% if form.email.errors %}
+              <div class="invalid-feedback">
+                {% for error in form.email.errors %}
+                  <p>{{ error }}</p>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Name Field -->
+          <div class="form-group">
+            <label for="name">Name</label>
+            {{ form.name(class="form-control", placeholder="Enter your name") }}
+            {% if form.name.errors %}
+              <div class="invalid-feedback">
+                {% for error in form.name.errors %}
+                  <p>{{ error }}</p>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Password Field -->
+          <div class="form-group">
+            <label for="password">Password</label>
+            {{ form.password(class="form-control", placeholder="Enter your password") }}
+            {% if form.password.errors %}
+              <div class="invalid-feedback">
+                {% for error in form.password.errors %}
+                  <p>{{ error }}</p>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" class="btn btn-primary">{{ form.submit.label.text }}</button>
+        </form>
+
       </div>
     </div>
   </div>
 </main>
 
-{% include "footer.html" %} {% endblock %}
+{% include "footer.html" %}
+{% endblock %}

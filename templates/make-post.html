@@ -1,9 +1,8 @@
-{% from 'bootstrap5/form.html' import render_form %}
 {% block content %}
 {% include "header.html" %}
 
 <!-- Page Header -->
-<header class="masthead" style="background-image: url('../static/assets/img/edit-bg.jpg')">
+<header class="masthead" style="background-image: url('{{ url_for('static', filename='assets/img/edit-bg.jpg') }}')">
   <div class="container position-relative px-4 px-lg-5">
     <div class="row gx-4 gx-lg-5 justify-content-center">
       <div class="col-md-10 col-lg-8 col-xl-7">
@@ -28,8 +27,39 @@
         {{ ckeditor.load() }}
         {{ ckeditor.config(name='body') }}
 
-        <!-- Render the form -->
-        {{ render_form(form, novalidate=True, button_map={"submit": "primary"}) }}
+        <!-- Form for creating a new post -->
+        <form method="POST" action="{{ url_for('add_new_post') }}">
+          {{ form.hidden_tag() }}
+
+          <!-- Title -->
+          <div class="form-group">
+            <label for="title">Title</label>
+            {{ form.title(class="form-control", placeholder="Enter the title of your post") }}
+          </div>
+
+          <!-- Subtitle -->
+          <div class="form-group">
+            <label for="subtitle">Subtitle</label>
+            {{ form.subtitle(class="form-control", placeholder="Enter the subtitle of your post") }}
+          </div>
+
+          <!-- Body -->
+          <div class="form-group">
+            <label for="body">Body</label>
+            {{ form.body(class="form-control", placeholder="Write your post here") }}
+          </div>
+
+          <!-- Image URL -->
+          <div class="form-group">
+            <label for="img_url">Image URL</label>
+            {{ form.img_url(class="form-control", placeholder="Enter the image URL") }}
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" class="btn btn-primary">
+            {{ "Save Changes" if is_edit else "Create Post" }}
+          </button>
+        </form>
       </div>
     </div>
   </div>
